@@ -5,8 +5,10 @@
 
 using namespace std;
 
-class DefaultMain {
+
+class Concurrency {
 public:
+
 // char field[N][M + 1] = {
 //     "#####",
 //     "#.  #",
@@ -68,14 +70,25 @@ public:
     Fixed p[N][M]{}, old_p[N][M];
 
     struct VectorField {
-        array<Fixed, deltas.size()> v[N][M];
+
+        void Print() {
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < M; ++j) {
+                    std::cout << v[i][j][1] << " ";
+                }
+                std::cout << "\n";
+            }
+        }
+
+        array<Fixed, 4> v[N][M];
+
         Fixed &add(int x, int y, int dx, int dy, Fixed dv) {
             return get(x, y, dx, dy) += dv;
         }
 
         Fixed &get(int x, int y, int dx, int dy) {
-            size_t i = ranges::find(deltas, pair(dx, dy)) - deltas.begin();
-            assert(i < deltas.size());
+            size_t i = (dx == -1) ? 0 : (dx == 1) ? 1 : (dy == -1) ? 2 : 3;
+            assert(i < 4);
             return v[x][y][i];
         }
     };
@@ -87,7 +100,7 @@ public:
     tuple<Fixed, bool, pair<int, int>> propagate_flow(int x, int y, Fixed lim) {
         last_use[x][y] = UT - 1;
         Fixed ret = 0;
-        for (auto [dx, dy] : deltas) {
+        for (auto [dx, dy]: deltas) {
             int nx = x + dx, ny = y + dy;
             if (field[nx][ny] != '#' && last_use[nx][ny] < UT) {
                 auto cap = velocity.get(x, y, dx, dy);
@@ -118,13 +131,13 @@ public:
     }
 
     Fixed random01() {
-        return Fixed::from_raw((rnd() & ((1 << 16) - 1)));
+        return Fixed((rnd() & ((1 << 16) - 1)), true);
     }
 
     void propagate_stop(int x, int y, bool force = false) {
         if (!force) {
             bool stop = true;
-            for (auto [dx, dy] : deltas) {
+            for (auto [dx, dy]: deltas) {
                 int nx = x + dx, ny = y + dy;
                 if (field[nx][ny] != '#' && last_use[nx][ny] < UT - 1 && velocity.get(x, y, dx, dy) > 0) {
                     stop = false;
@@ -136,7 +149,7 @@ public:
             }
         }
         last_use[x][y] = UT;
-        for (auto [dx, dy] : deltas) {
+        for (auto [dx, dy]: deltas) {
             int nx = x + dx, ny = y + dy;
             if (field[nx][ny] == '#' || last_use[nx][ny] == UT || velocity.get(x, y, dx, dy) > 0) {
                 continue;
@@ -147,7 +160,7 @@ public:
 
     Fixed move_prob(int x, int y) {
         Fixed sum = 0;
-        for (size_t i = 0; i < deltas.size(); ++i) {
+        for (size_t i = 0; i < 4; ++i) {
             auto [dx, dy] = deltas[i];
             int nx = x + dx, ny = y + dy;
             if (field[nx][ny] == '#' || last_use[nx][ny] == UT) {
@@ -162,14 +175,26 @@ public:
         return sum;
     }
 
+    struct ParticleParams {
+        char type;
+        Fixed cur_p;
+        array<Fixed, 4> v;
+
+        void swap_with(int x, int y, char (&field)[N][M + 1], Fixed (&p)[N][M], VectorField &velocity) {
+            swap(field[x][y], type);
+            swap(p[x][y], cur_p);
+            swap(velocity.v[x][y], v);
+        }
+    };
+
     bool propagate_move(int x, int y, bool is_first) {
         last_use[x][y] = UT - is_first;
         bool ret = false;
         int nx = -1, ny = -1;
         do {
-            std::array<Fixed, deltas.size()> tres;
+            std::array<Fixed, 4> tres;
             Fixed sum = 0;
-            for (size_t i = 0; i < deltas.size(); ++i) {
+            for (size_t i = 0; i < 4; ++i) {
                 auto [dx, dy] = deltas[i];
                 int nx = x + dx, ny = y + dy;
                 if (field[nx][ny] == '#' || last_use[nx][ny] == UT) {
@@ -200,7 +225,7 @@ public:
             ret = (last_use[nx][ny] == UT - 1 || propagate_move(nx, ny, false));
         } while (!ret);
         last_use[x][y] = UT;
-        for (size_t i = 0; i < deltas.size(); ++i) {
+        for (size_t i = 0; i < 4; ++i) {
             auto [dx, dy] = deltas[i];
             int nx = x + dx, ny = y + dy;
             if (field[nx][ny] != '#' && last_use[nx][ny] < UT - 1 && velocity.get(x, y, dx, dy) < 0) {
@@ -209,18 +234,10 @@ public:
         }
         if (ret) {
             if (!is_first) {
-                char type;
-                Fixed cur_p;
-                array<Fixed, deltas.size()> v;
-                swap(field[x][y], type);
-                swap(p[x][y], cur_p);
-                swap(velocity.v[x][y], v);
-                swap(field[nx][ny], type);
-                swap(p[nx][ny], cur_p);
-                swap(velocity.v[nx][ny], v);
-                swap(field[x][y], type);
-                swap(p[x][y], cur_p);
-                swap(velocity.v[x][y], v);
+                ParticleParams pp{};
+                pp.swap_with(x, y, field, p, velocity);
+                pp.swap_with(nx, ny, field, p, velocity);
+                pp.swap_with(x, y, field, p, velocity);
             }
         }
         return ret;
@@ -228,7 +245,7 @@ public:
 
     int dirs[N][M]{};
 
-    int run(int T) {
+    int run_Concurrency(int T, int numThreads) {
         rho[' '] = 0.01;
         rho['.'] = 1000;
         Fixed g = 0.1;
@@ -237,7 +254,7 @@ public:
             for (size_t y = 0; y < M; ++y) {
                 if (field[x][y] == '#')
                     continue;
-                for (auto [dx, dy] : deltas) {
+                for (auto [dx, dy]: deltas) {
                     dirs[x][y] += (field[x + dx][y + dy] != '#');
                 }
             }
@@ -255,14 +272,13 @@ public:
                         velocity.add(x, y, 1, 0, g);
                 }
             }
-
             // Apply forces from p
             memcpy(old_p, p, sizeof(p));
             for (size_t x = 0; x < N; ++x) {
                 for (size_t y = 0; y < M; ++y) {
                     if (field[x][y] == '#')
                         continue;
-                    for (auto [dx, dy] : deltas) {
+                    for (auto [dx, dy]: deltas) {
                         int nx = x + dx, ny = y + dy;
                         if (field[nx][ny] != '#' && old_p[nx][ny] < old_p[x][y]) {
                             auto delta_p = old_p[x][y] - old_p[nx][ny];
@@ -305,7 +321,7 @@ public:
                 for (size_t y = 0; y < M; ++y) {
                     if (field[x][y] == '#')
                         continue;
-                    for (auto [dx, dy] : deltas) {
+                    for (auto [dx, dy]: deltas) {
                         auto old_v = velocity.get(x, y, dx, dy);
                         auto new_v = velocity_flow.get(x, y, dx, dy);
                         if (old_v > 0) {
@@ -340,7 +356,6 @@ public:
                     }
                 }
             }
-
             if (prop) {
                 cout << "Tick " << i << ":\n";
                 for (size_t x = 0; x < N; ++x) {

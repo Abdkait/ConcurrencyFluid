@@ -175,18 +175,6 @@ public:
         return sum;
     }
 
-    struct ParticleParams {
-        char type;
-        Fixed cur_p;
-        array<Fixed, 4> v;
-
-        void swap_with(int x, int y, char (&field)[N][M + 1], Fixed (&p)[N][M], VectorField &velocity) {
-            swap(field[x][y], type);
-            swap(p[x][y], cur_p);
-            swap(velocity.v[x][y], v);
-        }
-    };
-
     bool propagate_move(int x, int y, bool is_first) {
         last_use[x][y] = UT - is_first;
         bool ret = false;
@@ -234,10 +222,21 @@ public:
         }
         if (ret) {
             if (!is_first) {
-                ParticleParams pp{};
-                pp.swap_with(x, y, field, p, velocity);
-                pp.swap_with(nx, ny, field, p, velocity);
-                pp.swap_with(x, y, field, p, velocity);
+                char type;
+                Fixed cur_p;
+                array<Fixed, 4> v;
+
+                swap(field[x][y], type);
+                swap(p[x][y], cur_p);
+                swap(velocity.v[x][y], v);
+
+                swap(field[nx][ny], type);
+                swap(p[nx][ny], cur_p);
+                swap(velocity.v[nx][ny], v);
+
+                swap(field[x][y], type);
+                swap(p[x][y], cur_p);
+                swap(velocity.v[x][y], v);
             }
         }
         return ret;
@@ -245,8 +244,7 @@ public:
 
     int dirs[N][M]{};
 
-    int run_NoConcurrency() {
-        auto start = std::chrono::high_resolution_clock::now();
+    int run_NoConcurrency(int T) {
         rho[' '] = 0.01;
         rho['.'] = 1000;
         Fixed g = 0.1;
