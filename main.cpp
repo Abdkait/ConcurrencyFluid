@@ -40,6 +40,8 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg.find("--T=") == 0) T = std::stoi(arg.substr(4));
+        if (arg.find("--threads=") == 0) numThreads = std::stoi(arg.substr(10));
     }
+    std::cout << T << " " << numThreads << "\n";
     Test(T, numThreads);
 }

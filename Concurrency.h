@@ -2,6 +2,7 @@
 
 #include "variable.h"
 #include "Fixed.h"
+#include <omp.h>
 
 using namespace std;
 
@@ -245,19 +246,38 @@ public:
 
     int dirs[N][M]{};
 
+    inline void func(int left, int right) {
+        for (size_t x = left; x < right; ++x) {
+            for (size_t y = 0; y < M; ++y) {
+                if (field[x][y] == '#')
+                    continue;
+                for (auto [dx, dy] : deltas) {
+                    dirs[x][y] += (field[x + dx][y + dy] != '#');
+                }
+            }
+        }
+    }
+
     int run_Concurrency(int T, int numThreads) {
+        omp_set_num_threads(numThreads);
         rho[' '] = 0.01;
         rho['.'] = 1000;
         Fixed g = 0.1;
 
-        for (size_t x = 0; x < N; ++x) {
-            for (size_t y = 0; y < M; ++y) {
-                if (field[x][y] == '#')
-                    continue;
-                for (auto [dx, dy]: deltas) {
-                    dirs[x][y] += (field[x + dx][y + dy] != '#');
-                }
-            }
+        vector<thread> threads;
+        size_t chunkSize = N / numThreads;
+
+        for (int i = 0; i < numThreads; ++i) {
+            int left = i * chunkSize;
+            int right = (i == numThreads - 1) ? N : left + chunkSize;
+
+            threads.emplace_back([this, left, right]() {
+                func(left, right);
+            });
+        }
+
+        for (auto& t : threads) {
+            t.join();
         }
 
         for (size_t i = 0; i < T; ++i) {
@@ -274,6 +294,7 @@ public:
             }
             // Apply forces from p
             memcpy(old_p, p, sizeof(p));
+#pragma omp parallel for
             for (size_t x = 0; x < N; ++x) {
                 for (size_t y = 0; y < M; ++y) {
                     if (field[x][y] == '#')
